@@ -305,7 +305,6 @@ class AdapterBase:
             playbook_snapshot=self.playbook.as_prompt(),
             epoch=epoch,
             step=step_index,
-            bullet_metadata=bullet_metadata,
         )
 
 
