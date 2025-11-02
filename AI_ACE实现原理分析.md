@@ -450,6 +450,384 @@ Curator ← Reflector（分析反馈）← 获得反馈
 - **类型安全**: 使用 dataclass 和类型注解
 - **可追踪**: 内置可观测性支持
 
+## ACE 自我学习详细示例
+
+下面通过一个完整的数学问题示例，详细展示 ACE 如何实现自我学习。
+
+### 场景设置
+
+**任务**: 解决两位数乘法问题 `23 × 45`  
+**初始状态**: Playbook 为空，没有任何策略  
+**目标**: ACE 通过尝试、错误、反思、学习，最终掌握正确的解题方法
+
+---
+
+### 第 1 轮：初始尝试（失败）
+
+#### 1.1 Generator 生成答案
+
+**输入**:
+```python
+question = "计算 23 × 45"
+context = ""
+playbook = Playbook()  # 空的 Playbook
+```
+
+**Generator 输出**:
+```json
+{
+  "reasoning": "我需要计算 23 × 45。23 × 45 = 23 × 40 + 23 × 5 = 920 + 115 = 1035",
+  "bullet_ids": [],  // 没有可用策略
+  "final_answer": "1035"
+}
+```
+
+**实际情况**: 正确答案是 `1035`，但 Generator 的计算过程可能有误（23 × 40 = 920 是正确的，但 23 × 5 = 115 也正确，相加得到 1035 是对的）
+
+#### 1.2 Environment 评估
+
+```python
+environment_result = EnvironmentResult(
+    feedback="答案正确，但计算过程不够清晰",
+    ground_truth="1035",
+    metrics={"correct": True, "clarity": 0.6}
+)
+```
+
+#### 1.3 Reflector 反思分析
+
+**Reflector 接收**:
+- Generator 的输出和推理过程
+- 环境反馈
+- 正确答案
+
+**Reflector 输出**:
+```json
+{
+  "reasoning": "Generator 得到了正确答案，但计算过程可以更清晰。分解方法（23 × 40 + 23 × 5）是正确的，但中间步骤可以更详细。",
+  "error_identification": "无错误，但可以改进",
+  "root_cause_analysis": "计算方法正确，但步骤不够详细，可能在其他类似问题中出错",
+  "correct_approach": "应该更详细地展示每一步：23 × 45 = 23 × (40 + 5) = 23 × 40 + 23 × 5 = 920 + 115 = 1035",
+  "key_insight": "两位数乘法应该先分解，然后分别计算各部分，最后相加",
+  "bullet_tags": []  // 没有使用的策略可标记
+}
+```
+
+#### 1.4 Curator 更新 Playbook
+
+**Curator 分析后生成 Delta**:
+```json
+{
+  "reasoning": "虽然答案正确，但可以学习更清晰的解题方法。添加一个策略来规范两位数乘法的步骤。",
+  "operations": [
+    {
+      "type": "ADD",
+      "section": "arithmetic",
+      "content": "对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，最后将结果相加",
+      "metadata": {"helpful": 1}
+    }
+  ]
+}
+```
+
+**Playbook 更新后**:
+```
+## arithmetic
+- [arithmetic-00001] 对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，最后将结果相加 (helpful=1, harmful=0, neutral=0)
+```
+
+---
+
+### 第 2 轮：使用学习的策略（改进）
+
+#### 2.1 Generator 生成答案（使用 Playbook）
+
+**输入**:
+```python
+question = "计算 23 × 45"  // 相同问题
+playbook = Playbook()  // 现在包含 1 个策略
+```
+
+**Playbook 内容**:
+```
+## arithmetic
+- [arithmetic-00001] 对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，最后将结果相加
+```
+
+**Generator 输出**:
+```json
+{
+  "reasoning": "根据策略 arithmetic-00001，我需要：1. 分解 45 = 40 + 5；2. 计算 23 × 40 = 920；3. 计算 23 × 5 = 115；4. 相加：920 + 115 = 1035",
+  "bullet_ids": ["arithmetic-00001"],  // 使用了学习的策略
+  "final_answer": "1035"
+}
+```
+
+**改进**: 推理过程更清晰，步骤更详细
+
+#### 2.2 Environment 评估
+
+```python
+environment_result = EnvironmentResult(
+    feedback="答案正确，计算过程清晰易懂",
+    ground_truth="1035",
+    metrics={"correct": True, "clarity": 0.95}
+)
+```
+
+#### 2.3 Reflector 反思分析
+
+**Reflector 输出**:
+```json
+{
+  "reasoning": "Generator 正确应用了策略，计算过程清晰，步骤详细。策略有效。",
+  "error_identification": "无错误",
+  "root_cause_analysis": "策略有效，成功指导了正确的解题过程",
+  "correct_approach": "策略应用正确",
+  "key_insight": "策略 arithmetic-00001 是有效的",
+  "bullet_tags": [
+    {
+      "id": "arithmetic-00001",
+      "tag": "helpful",
+      "justification": "策略成功指导了清晰的解题过程"
+    }
+  ]
+}
+```
+
+#### 2.4 Curator 更新 Playbook
+
+**Curator 生成 Delta**:
+```json
+{
+  "reasoning": "策略成功应用，增加 helpful 计数",
+  "operations": [
+    {
+      "type": "TAG",
+      "bullet_id": "arithmetic-00001",
+      "metadata": {"helpful": 1}
+    }
+  ]
+}
+```
+
+**Playbook 更新后**:
+```
+## arithmetic
+- [arithmetic-00001] 对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，最后将结果相加 (helpful=2, harmful=0, neutral=0)
+```
+
+---
+
+### 第 3 轮：处理新问题（进一步学习）
+
+#### 3.1 Generator 处理新问题
+
+**输入**:
+```python
+question = "计算 67 × 89"
+playbook = Playbook()  // 包含 1 个策略（helpful=2）
+```
+
+**Generator 输出**:
+```json
+{
+  "reasoning": "根据策略 arithmetic-00001：1. 分解 89 = 80 + 9；2. 计算 67 × 80 = 5360；3. 计算 67 × 9 = 603；4. 相加：5360 + 603 = 5963",
+  "bullet_ids": ["arithmetic-00001"],
+  "final_answer": "5963"
+}
+```
+
+#### 3.2 Environment 评估
+
+```python
+environment_result = EnvironmentResult(
+    feedback="答案正确！",
+    ground_truth="5963",
+    metrics={"correct": True}
+)
+```
+
+#### 3.3 Reflector 反思分析
+
+**Reflector 输出**:
+```json
+{
+  "reasoning": "策略成功应用于新问题，证明了策略的通用性。",
+  "bullet_tags": [
+    {
+      "id": "arithmetic-00001",
+      "tag": "helpful",
+      "justification": "策略成功应用于不同的问题"
+    }
+  ]
+}
+```
+
+**Playbook 更新**:
+```
+## arithmetic
+- [arithmetic-00001] ... (helpful=3, harmful=0, neutral=0)
+```
+
+---
+
+### 第 4 轮：遇到错误并学习
+
+#### 4.1 Generator 处理复杂问题
+
+**输入**:
+```python
+question = "计算 34 × 56"
+playbook = Playbook()  // 包含 1 个策略（helpful=3）
+```
+
+**Generator 输出**:
+```json
+{
+  "reasoning": "根据策略：1. 分解 56 = 50 + 6；2. 计算 34 × 50 = 1700；3. 计算 34 × 6 = 204；4. 相加：1700 + 204 = 1904",
+  "bullet_ids": ["arithmetic-00001"],
+  "final_answer": "1904"
+}
+```
+
+#### 4.2 Environment 评估（发现错误）
+
+```python
+environment_result = EnvironmentResult(
+    feedback="答案错误！正确答案是 1904，但你的计算过程有误：34 × 50 = 1700 是正确的，但 34 × 6 = 204 也是正确的，相加得 1904。等等，答案是对的...让我重新检查。实际上 34 × 56 = 1904 是正确的。",
+    ground_truth="1904",
+    metrics={"correct": True}
+)
+```
+
+**假设场景**: 如果 Generator 计算错误，比如 34 × 6 = 204 算成了 204，但实际应该是 204（正确），或者算成了其他错误值。
+
+#### 4.3 Reflector 反思分析（发现真正错误）
+
+假设 Generator 实际输出是：
+```json
+{
+  "reasoning": "根据策略：1. 分解 56 = 50 + 6；2. 计算 34 × 50 = 1700；3. 计算 34 × 6 = 180；4. 相加：1700 + 180 = 1880",
+  "final_answer": "1880"  // 错误答案
+}
+```
+
+**Reflector 输出**:
+```json
+{
+  "reasoning": "Generator 正确应用了策略，但在计算 34 × 6 时出错。34 × 6 = 204，但 Generator 计算成了 180。策略本身是正确的，但需要强调验证中间步骤的重要性。",
+  "error_identification": "计算错误：34 × 6 = 204，但计算成了 180",
+  "root_cause_analysis": "策略应用正确，但中间计算步骤有误，需要加强验证机制",
+  "correct_approach": "34 × 6 = (30 + 4) × 6 = 30 × 6 + 4 × 6 = 180 + 24 = 204",
+  "key_insight": "需要验证中间计算步骤，避免错误累积",
+  "bullet_tags": [
+    {
+      "id": "arithmetic-00001",
+      "tag": "neutral",
+      "justification": "策略正确，但执行有误"
+    }
+  ]
+}
+```
+
+#### 4.4 Curator 更新 Playbook（添加新策略）
+
+**Curator 生成 Delta**:
+```json
+{
+  "reasoning": "策略本身有效，但需要添加验证中间步骤的策略，避免计算错误",
+  "operations": [
+    {
+      "type": "ADD",
+      "section": "arithmetic",
+      "content": "在执行多步计算时，每完成一步都要验证结果。例如：34 × 6 = (30 + 4) × 6 = 180 + 24 = 204，验证 180 + 24 = 204",
+      "metadata": {"helpful": 1}
+    },
+    {
+      "type": "UPDATE",
+      "bullet_id": "arithmetic-00001",
+      "content": "对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，每一步都要验证结果，最后将结果相加",
+      "metadata": {"helpful": 0}
+    }
+  ]
+}
+```
+
+**Playbook 更新后**:
+```
+## arithmetic
+- [arithmetic-00001] 对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，每一步都要验证结果，最后将结果相加 (helpful=3, harmful=0, neutral=1)
+- [arithmetic-00002] 在执行多步计算时，每完成一步都要验证结果。例如：34 × 6 = (30 + 4) × 6 = 180 + 24 = 204，验证 180 + 24 = 204 (helpful=1, harmful=0, neutral=0)
+```
+
+---
+
+### 第 5 轮：应用改进后的策略
+
+#### 5.1 Generator 使用更新后的策略
+
+**Playbook 现在包含**:
+- 改进的分解策略（增加了验证步骤）
+- 新的验证策略
+
+**Generator 输出**:
+```json
+{
+  "reasoning": "根据策略 arithmetic-00001：1. 分解 34 × 56 = 34 × (50 + 6)；2. 计算 34 × 50 = 1700（验证：1700 ÷ 50 = 34 ✓）；3. 计算 34 × 6 = 204（验证：(30 + 4) × 6 = 180 + 24 = 204 ✓）；4. 相加：1700 + 204 = 1904（验证：1700 + 200 = 1900, 1900 + 4 = 1904 ✓）",
+  "bullet_ids": ["arithmetic-00001", "arithmetic-00002"],
+  "final_answer": "1904"
+}
+```
+
+**改进**: 现在包含了验证步骤，减少了错误
+
+---
+
+### 学习总结
+
+通过 5 轮学习，ACE 完成了以下改进：
+
+1. **第 1 轮**: 从空白开始，生成答案但过程不够清晰
+   - **学习**: 添加了基础的分解策略
+
+2. **第 2 轮**: 应用策略，过程更清晰
+   - **学习**: 确认策略有效，增加 helpful 计数
+
+3. **第 3 轮**: 策略成功应用于新问题
+   - **学习**: 进一步确认策略的通用性
+
+4. **第 4 轮**: 发现计算错误
+   - **学习**: 
+     - 改进现有策略（添加验证步骤）
+     - 添加新的验证策略
+
+5. **第 5 轮**: 应用改进后的策略
+   - **学习**: 验证步骤帮助避免错误
+
+**最终 Playbook**:
+```
+## arithmetic
+- [arithmetic-00001] 对于两位数乘法（如 23 × 45）：先将第二个数分解（45 = 40 + 5），然后分别计算 23 × 40 和 23 × 5，每一步都要验证结果，最后将结果相加 (helpful=3, harmful=0, neutral=1)
+- [arithmetic-00002] 在执行多步计算时，每完成一步都要验证结果。例如：34 × 6 = (30 + 4) × 6 = 180 + 24 = 204，验证 180 + 24 = 204 (helpful=1, harmful=0, neutral=0)
+```
+
+### 关键学习机制
+
+1. **从错误中学习**: 第 4 轮发现错误后，不仅改进了现有策略，还添加了新策略
+2. **策略评分**: 通过 helpful/harmful/neutral 计数追踪策略有效性
+3. **增量更新**: 每次只更新必要的部分，而不是重写整个 Playbook
+4. **上下文感知**: Generator 可以引用多个策略，形成策略组合
+5. **自我反思**: 即使在无外部反馈的情况下（如第 1 轮），也能通过自我分析学习
+
+### 自我学习的优势
+
+1. **无需人工干预**: 整个过程完全自动化
+2. **持续改进**: 每次任务都会改进策略
+3. **可解释**: 每个策略都是人类可读的，可以理解学习过程
+4. **可复用**: 学习的策略可以在未来的问题中复用
+5. **可追踪**: 可以查看每个策略的创建时间、使用次数、有效性
+
 ## 总结
 
 ACE 通过将"学习"分解为三个明确的角色（生成、反思、策展），实现了一个可解释、可控的自适应系统。核心创新在于将策略显式化为 Playbook，使 LLM 的"记忆"和"学习"过程变得可见和可管理。
